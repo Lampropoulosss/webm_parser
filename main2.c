@@ -249,9 +249,12 @@ int main()
     off_t trackPosition;
     const unsigned char trackEntryID[] = {0xAE};
     off_t trackEntryPosition;
+    const unsigned char trackType[] = {0x83};
+    const unsigned char trackNumberID[] = {0xD7};
+    off_t trackNumberPosition;
 
     uint8_t buffer[BUFSIZE];
-    int len, pos = 0;
+    int len;
     uint8_t mask;
 
     int fd = open("stream.webm", O_RDONLY);
@@ -325,9 +328,12 @@ int main()
         return EXIT_FAILURE;
     }
 
-    uint64_t data_len = vint_get_uint(&size);
+    segmentPosition = lseek(fd, 0, SEEK_CUR);
 
-    if ((trackPosition = findOffset(fd, trackID, sizeof(trackID), data_len)) == -1) // Find the Track element inside the Segment.
+    uint64_t segment_len = vint_get_uint(&size);
+    uint64_t data_len;
+
+    if ((trackPosition = findOffset(fd, trackID, sizeof(trackID), segment_len)) == -1) // Find the Track element inside the Segment.
     {
         printf("Couldnt not find the desired Track");
         return EXIT_FAILURE;
@@ -397,13 +403,79 @@ int main()
         return EXIT_FAILURE;
     }
 
-    data_len = vint_get_uint(&size); // TrackEntry data size
+    data_len = vint_get_uint(&size);             // TrackEntry data size
+    trackEntryPosition = lseek(fd, 0, SEEK_CUR); // trackEntryPosition now points to the byte from which the "data part" starts
 
-    /*
-        1) Wanna search in the trackEntry for the track number and track type
+    lseek(fd, findOffset(fd, trackType, sizeof(trackType), data_len) + sizeof(trackType) + 1, SEEK_SET); // Move to the start of the trackType data
 
-        https://www.matroska.org/technical/elements.html
-    */
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Could not read the track size byte!\n");
+        return EXIT_FAILURE;
+    }
+
+    // buffer[0] now contains the type of the track
+    if (!buffer[0] == 2)
+    {
+        printf("Uh oh, the TrackEntry does not contain the audio...\n");
+        return EXIT_FAILURE;
+    }
+
+    lseek(fd, trackEntryPosition, SEEK_SET); // Move back to the TrackEntry data size byte
+
+    if ((trackEntryPosition = findOffset(fd, trackNumberID, sizeof(trackNumberID), data_len)) == -1) // data_len still includes the data length of the TrackEntry
+    {
+        printf("Couldnt not find the trackNumber");
+        return EXIT_FAILURE;
+    }
+
+    lseek(fd, trackEntryPosition + sizeof(trackEntryID), SEEK_SET); // Move to the TrackEntry element size byte position.
+
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Could not read the trackNumber size byte!\n");
+        return EXIT_FAILURE;
+    }
+
+    size.width = 1;
+    mask = 0b10000000;
+
+    // Get Element size width
+    while (!(buffer[0] & mask))
+    {
+        mask >>= 1;
+        size.width++;
+    }
+
+    buffer[0] ^= mask;
+    size.data[0] = buffer[0];
+
+    // Get EBML Element Size data.
+    if ((len = read(fd, buffer, size.width - 1)) != size.width - 1)
+    {
+        printf("Uh oh, read id data error!\n");
+        return EXIT_FAILURE;
+    }
+
+    data_len = vint_get_uint(&size); // TrackNumber data size
+
+    if ((len = read(fd, buffer, data_len) != data_len))
+    {
+        printf("Uh oh, could not read the trackNumber value\n");
+        return EXIT_FAILURE;
+    }
+
+    // buffer[0] now contains the track number
+    int trackNumber = buffer[0];
+
+    const unsigned char clusterID[] = {0x1F, 0x43, 0xB6, 0x75};
+
+    do
+    {
+        lseek(fd, segmentPosition, SEEK_SET); // Move to the start of the segment
+        off_t clusterPosition = findOffset(fd, clusterID, sizeof(clusterID), segment_len);
+
+    } while (1);
 
     return 0;
 }
