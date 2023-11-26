@@ -311,6 +311,13 @@ int main()
     size.width = 1;
     mask = 0b10000000;
 
+    // Get EBML Element Size first byte.
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Uh oh, read first size byte error!\n");
+        return EXIT_FAILURE;
+    }
+
     // Get Element size width
     while (!(buffer[0] & mask))
     {
@@ -326,6 +333,12 @@ int main()
     {
         printf("Uh oh, read id data error!\n");
         return EXIT_FAILURE;
+    }
+
+    // Get EBML Element Size.
+    for (int i = 1; i < size.width; ++i)
+    {
+        size.data[i] = buffer[i - 1];
     }
 
     segmentPosition = lseek(fd, 0, SEEK_CUR);
@@ -341,14 +354,15 @@ int main()
 
     lseek(fd, trackPosition + 4, SEEK_SET); // Move to the Track element size byte position.
 
-    if ((len = read(fd, buffer, 1)) != 1)
-    {
-        printf("Could not read the track size byte!\n");
-        return EXIT_FAILURE;
-    }
-
     size.width = 1;
     mask = 0b10000000;
+
+    // Get EBML Element Size first byte.
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Uh oh, read first size byte error!\n");
+        return EXIT_FAILURE;
+    }
 
     // Get Element size width
     while (!(buffer[0] & mask))
@@ -365,6 +379,12 @@ int main()
     {
         printf("Uh oh, read id data error!\n");
         return EXIT_FAILURE;
+    }
+
+    // Get EBML Element Size.
+    for (int i = 1; i < size.width; ++i)
+    {
+        size.data[i] = buffer[i - 1];
     }
 
     data_len = vint_get_uint(&size); // Track data size
@@ -377,14 +397,15 @@ int main()
 
     lseek(fd, trackEntryPosition + sizeof(trackEntryID), SEEK_SET); // Move to the TrackEntry element size byte position.
 
-    if ((len = read(fd, buffer, 1)) != 1)
-    {
-        printf("Could not read the track size byte!\n");
-        return EXIT_FAILURE;
-    }
-
     size.width = 1;
     mask = 0b10000000;
+
+    // Get EBML Element Size first byte.
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Uh oh, read first size byte error!\n");
+        return EXIT_FAILURE;
+    }
 
     // Get Element size width
     while (!(buffer[0] & mask))
@@ -401,6 +422,12 @@ int main()
     {
         printf("Uh oh, read id data error!\n");
         return EXIT_FAILURE;
+    }
+
+    // Get EBML Element Size.
+    for (int i = 1; i < size.width; ++i)
+    {
+        size.data[i] = buffer[i - 1];
     }
 
     data_len = vint_get_uint(&size);             // TrackEntry data size
@@ -431,14 +458,15 @@ int main()
 
     lseek(fd, trackEntryPosition + sizeof(trackEntryID), SEEK_SET); // Move to the TrackEntry element size byte position.
 
-    if ((len = read(fd, buffer, 1)) != 1)
-    {
-        printf("Could not read the trackNumber size byte!\n");
-        return EXIT_FAILURE;
-    }
-
     size.width = 1;
     mask = 0b10000000;
+
+    // Get EBML Element Size first byte.
+    if ((len = read(fd, buffer, 1)) != 1)
+    {
+        printf("Uh oh, read first size byte error!\n");
+        return EXIT_FAILURE;
+    }
 
     // Get Element size width
     while (!(buffer[0] & mask))
@@ -457,6 +485,12 @@ int main()
         return EXIT_FAILURE;
     }
 
+    // Get EBML Element Size.
+    for (int i = 1; i < size.width; ++i)
+    {
+        size.data[i] = buffer[i - 1];
+    }
+
     data_len = vint_get_uint(&size); // TrackNumber data size
 
     if ((len = read(fd, buffer, data_len) != data_len))
@@ -469,12 +503,96 @@ int main()
     int trackNumber = buffer[0];
 
     const unsigned char clusterID[] = {0x1F, 0x43, 0xB6, 0x75};
+    const unsigned char simpleBlockID[] = {0xA3};
+
+    lseek(fd, segmentPosition, SEEK_SET); // Move to the start of the segment
 
     do
     {
-        lseek(fd, segmentPosition, SEEK_SET); // Move to the start of the segment
+        uint64_t clusterDataSize;
         off_t clusterPosition = findOffset(fd, clusterID, sizeof(clusterID), segment_len);
 
+        lseek(fd, clusterPosition + sizeof(clusterID), SEEK_SET); // Move the start of the cluster element size.
+        printf("Cluster id Position: %ld\n", clusterPosition + sizeof(clusterID));
+
+        size.width = 1;
+        mask = 0b10000000;
+
+        // Get EBML Element Size first byte.
+        if ((len = read(fd, buffer, 1)) != 1)
+        {
+            printf("Uh oh, read first size byte error!\n");
+            return EXIT_FAILURE;
+        }
+
+        // Get Element size width
+        while (!(buffer[0] & mask))
+        {
+            mask >>= 1;
+            size.width++;
+        }
+
+        buffer[0] ^= mask;
+        size.data[0] = buffer[0];
+
+        // Get EBML Element Size data.
+        if ((len = read(fd, buffer, size.width - 1)) != size.width - 1)
+        {
+            printf("Uh oh, read id data error!\n");
+            return EXIT_FAILURE;
+        }
+
+        // Get EBML Element Size.
+        for (int i = 1; i < size.width; ++i)
+        {
+            size.data[i] = buffer[i - 1];
+        }
+
+        clusterDataSize = vint_get_uint(&size); // Cluster data size (in bytes)
+
+        off_t simpleBlockPosition = findOffset(fd, simpleBlockID, sizeof(simpleBlockID), clusterDataSize);
+
+        printf("%lu\n", findOffset(fd, simpleBlockID, sizeof(simpleBlockID), clusterDataSize));
+        lseek(fd, simpleBlockPosition + sizeof(simpleBlockID), SEEK_SET);
+
+        size.width = 1;
+        mask = 0b10000000;
+
+        // Get EBML Element Size first byte.
+        if ((len = read(fd, buffer, 1)) != 1)
+        {
+            printf("Uh oh, read first size byte error!\n");
+            return EXIT_FAILURE;
+        }
+
+        // Get Element size width
+        while (!(buffer[0] & mask))
+        {
+            mask >>= 1;
+            size.width++;
+        }
+
+        buffer[0] ^= mask;
+        size.data[0] = buffer[0];
+
+        // Get EBML Element Size data.
+        if ((len = read(fd, buffer, size.width - 1)) != size.width - 1)
+        {
+            printf("Uh oh, read id data error!\n");
+            return EXIT_FAILURE;
+        }
+
+        // Get EBML Element Size.
+        for (int i = 1; i < size.width; ++i)
+        {
+            size.data[i] = buffer[i - 1];
+        }
+
+        data_len = vint_get_uint(&size); // simpleBlock size (in bytes)
+
+        break;
+
+        // lseek(fd, clusterPosition, SEEK_SET);
     } while (1);
 
     return 0;

@@ -36,9 +36,13 @@ off_t findOffset(int fd, const unsigned char ID[], unsigned int IDsize, unsigned
         lseek(fd, startingPosition, SEEK_SET);
 
         if (found == 1)
+        {
             return foundPosition;
-
-        return -1;
+        }
+        else
+        {
+            return -1;
+        }
     }
     else
     {
@@ -72,8 +76,12 @@ off_t findOffset(int fd, const unsigned char ID[], unsigned int IDsize, unsigned
         lseek(fd, startingPosition, SEEK_SET);
 
         if (found == 1)
+        {
             return foundPosition;
-
-        return -1;
+        }
+        else
+        {
+            return -1;
+        }
     }
 }
